@@ -1,0 +1,8 @@
+Enviar un mail
+
+A un destinatario cualquiera
+echo "texto del mensaje” | mail -s "asunto" itba.jacoby@gmail.com
+
+A un celular que sera recibido como mensaje de texto
+echo "texto del mensaje" | mail  1165207477@sms.movistar.net.ar
+

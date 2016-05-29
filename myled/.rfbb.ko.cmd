@@ -1,0 +1,1 @@
+cmd_/home/pi/rfdany/rf-bitbanger/myrfbb/rfbb.ko := ld -EL -r  -T /home/pi/rfdany/raspberrypi-linux-6f2064c/scripts/module-common.lds --build-id  -o /home/pi/rfdany/rf-bitbanger/myrfbb/rfbb.ko /home/pi/rfdany/rf-bitbanger/myrfbb/rfbb.o /home/pi/rfdany/rf-bitbanger/myrfbb/rfbb.mod.o
