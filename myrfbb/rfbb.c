@@ -78,6 +78,7 @@
 #include <mach/gpio.h>
 #include <linux/cdev.h> 
 #include <linux/kfifo.h>
+#include "query_ioctl.h"
 
 //*****************Select Hardware Type: Serial or parallel*********************************
 #define PARA		0
@@ -124,6 +125,9 @@ static void send_space(unsigned long length);
 void Set_Pin(int pin);
 void Clr_Pin(int pin);
 unsigned int spiWrite(unsigned int spidata);
+
+
+static unsigned int data_step=0;			// data_step is added to incomming data
 
 // Hardware PIN used for pulse generation
 static int tx_pin = 17;
@@ -194,6 +198,25 @@ static void safe_udelay(unsigned long usecs)
 	}
 	udelay(usecs);
 }
+
+/*	Call examples
+		
+//			send_pulse(100);   // 100 us HI
+		
+//			send_space(100);   // 100 us LO
+
+//			send_pulse(10000);   // 10 ms HI
+		
+//			send_space(10000);   // 10 ms LO
+
+//			send_pulse(1000000);   // 1 seg HI
+		
+//			send_space(1000000);   // 1 seg LO
+
+
+*/
+
+
 
 static void send_pulse(unsigned long length)
 {   
@@ -295,15 +318,17 @@ static ssize_t rfbb_write(struct file *file, const char *buf,
 		return -EFAULT;
 	}
 
-	spiWrite(spidata);
+	spidata = data_step + spidata;   // data_step is added to incomming data
+	
+	spiWrite(spidata);						// Send Data to hardware
 
 	return n;
 }
 
 
-#if HARDWARE == PARA
+#if HARDWARE == PARA						
 
-unsigned int spiWrite(unsigned int spidata)
+unsigned int spiWrite(unsigned int spidata) // Send Data to hardware
 {
 	int i;	
 		
@@ -335,32 +360,17 @@ unsigned int spiWrite(unsigned int spidata)
 	
 	return 0;
 }
-/*	
-		
-//			send_pulse(100);   // 100 us HI
-		
-//			send_space(100);   // 100 us LO
 
-//			send_pulse(10000);   // 10 ms HI
-		
-//			send_space(10000);   // 10 ms LO
-
-//			send_pulse(1000000);   // 1 seg HI
-		
-//			send_space(1000000);   // 1 seg LO
-
-
-*/
 
 #elif HARDWARE == SERIAL
 
-unsigned int spiWrite(unsigned int spidata)
+unsigned int spiWrite(unsigned int spidata)	// Send Data to hardware
 {
 	unsigned int i;	
 	
 	dprintk("entering on spiwrite %d\n", spidata);
 	
-	Clr_Pin(PIN_SCK);                                     // Load and CK low (steady state)
+	Clr_Pin(PIN_SCK);     // Load and CK low (steady state)
 	Clr_Pin(PIN_LOAD); 
 		
 		
@@ -393,7 +403,7 @@ unsigned int spiWrite(unsigned int spidata)
 		}
 		
 		
-		Set_Pin(PIN_LOAD);
+		Set_Pin(PIN_LOAD);							// transfer shift register to output latch 
 		
 	}	
 	
@@ -403,25 +413,62 @@ unsigned int spiWrite(unsigned int spidata)
 
 #endif
 
-
-
-
-
 // ************************IOCTL**************************************
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 35)
-static int rfbb_ioctl(struct inode *node, struct file *filep, unsigned int cmd,
-		      unsigned long arg)
+static int device_ioctl(struct inode *node, struct file *filep, unsigned int cmd,unsigned long arg)
 #else
-static long rfbb_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
+static long device_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 #endif
 {
-	switch (cmd) {
+query_arg_t q;	
 
-	default:
-		return -ENOIOCTLCMD;
-	}
-	return 0;
+	dprintk("IOCTL function \n");
+
+ 
+    switch (cmd)
+    {
+        case QUERY_GET_VARIABLES:
+            q.data_step = data_step ;
+            q.param1 = 0;
+            q.param2 = 1;
+		
+			dprintk("IOCTL: QUERY_GET_VARIABLES  data_step:%d  param1:%d param2:%d \n"
+			,q.data_step,q.param1,q.param2 ); 
+
+            if (copy_to_user((query_arg_t *)arg, &q, sizeof(query_arg_t)))
+            {
+                return -EACCES;
+            }
+            break;
+        case QUERY_CLR_VARIABLES:
+            
+            q.param1 = 0;
+            dprintk("IOCTL: QUERY_CLR_VARIABLES  data_step:%d  param1:%d param2:%d \n"
+			,q.data_step,q.param1,q.param2 ); 
+            
+            
+                      
+            break;
+        case QUERY_SET_VARIABLES:
+            if (copy_from_user(&q, (query_arg_t *)arg, sizeof(query_arg_t)))
+            {
+                return -EACCES;
+            }
+            data_step = q.data_step;
+            
+            dprintk("IOCTL: QUERY_SET_VARIABLES  data_step:%d  param1:%d param2:%d \n"
+			,q.data_step,q.param1,q.param2 ); 
+            
+            
+            break;
+        default:
+            return -EINVAL;
+    }
+ 
+    return 0;
 }
+
 
 // **********************END**IOCTL**********************************
 
@@ -460,11 +507,16 @@ static struct file_operations rfbb_fops = {
 	.write	= rfbb_write,
 	.read = rfbb_read,
 	
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 35)
-	.ioctl	= rfbb_ioctl,
+	.ioctl		= device_ioctl,
 #else
-	.unlocked_ioctl	= rfbb_ioctl,
+	.unlocked_ioctl	= device_ioctl,
 #endif
+
+
+
+
 };
 
 
