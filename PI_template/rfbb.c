@@ -223,6 +223,7 @@ void Clr_Pin(int pin)
 	gpio_set_value(pin, 0);
 }
 
+/****
 static ssize_t rfbb_read(struct file *filp,  char *msgusr, size_t length, loff_t *offset )
 {
 
@@ -242,7 +243,7 @@ static	ssize_t bytes_left= 10;	//something
 	
 	bytes_left=strlen(geda_buffer);
 
-  	/* We transfer data to user space */
+  	// We transfer data to user space 
   	ret=copy_to_user(msgusr,geda_buffer,bytes_left);
 	bytes_copied = bytes_left;
 	
@@ -255,6 +256,60 @@ static	ssize_t bytes_left= 10;	//something
 	
 	return bytes_copied;
 }
+*****/
+
+//http://www.tldp.org/LDP/lkmpg/2.4/html/x579.html
+
+static ssize_t rfbb_read(struct file *filp,  // File Pointer
+							char *msgusr,    // The buffer in user space to fill with data     
+							size_t length,   // The length of the buffer     
+							loff_t *offset ) // Our offset in the file       
+{
+
+// this is the data to be returned to user space 
+
+static char geda_buffer[]="Raspberry PI - ITBA Temp1\n";
+	
+	
+// Number of bytes actually written to the buffer		
+
+static	ssize_t bytes_copied = 0;     
+
+// bytes_left=copy_to_user() returns number of bytes that could not be copied. On success, this will be zero
+
+static	ssize_t bytes_left= 1;    // just something <> 0
+
+// Number of bytes we want to copy to user land
+
+static	ssize_t bytes_to_copy = 0;
+
+
+
+	if(bytes_left==0)
+	{
+		return 0;
+	}	
+
+	
+	bytes_to_copy=strlen(geda_buffer);
+
+  	// We transfer data to user space 
+  	dprintk("IN bytes_to_copy %d , bytes_copied %d , bytes_left %d\n", bytes_to_copy, bytes_copied,bytes_left);
+  	while (bytes_left){
+		
+			
+			bytes_left=copy_to_user(msgusr,geda_buffer,bytes_to_copy);
+			bytes_copied=bytes_to_copy-bytes_left;
+	}
+	
+	dprintk("OUT bytes_to_copy %d , bytes_copied %d , bytes_left %d\n", bytes_to_copy, bytes_copied,bytes_left);
+	
+	
+	
+	return bytes_copied;
+}
+
+
 
 
 static ssize_t rfbb_write(struct file *file, const char *buf,
@@ -421,25 +476,20 @@ static long rfbb_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 query_arg_t q;	// q structure is used to transfer data from / to User Land
 
-	dprintk("IOCTL function \n");
+	dprintk("IOCLT function \n");
 
  
     switch (cmd)
     {
-		
-		
-		
         case QUERY_GET_VARIABLES:
-            q.param1 = param1;
+            q.param1 = param1 ;
             q.param2 = 20;
             q.param3 = 30;
-			
-            
+
             if (copy_to_user((query_arg_t *)arg, &q, sizeof(query_arg_t)))
             {
                 return -EACCES;
             }
-          
             break;
         case QUERY_CLR_VARIABLES:
             

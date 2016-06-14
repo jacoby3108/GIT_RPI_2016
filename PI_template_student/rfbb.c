@@ -80,15 +80,6 @@
 #include <linux/kfifo.h>
 #include "query_ioctl.h"
 
-//*****************Select Hardware Type: Serial or parallel*********************************
-#define PARA		0
-#define SERIAL		1
-
-#define HARDWARE 	PARA
-//*****************************************************************************************
-
-
-
 
 #define RFBB_DRIVER_VERSION "0.05"
 #define RFBB_DRIVER_NAME "rfbb"
@@ -121,39 +112,20 @@ static int init_port(void);
 static void rfbb_setup_cdev(struct cdev *dev, int minor,struct file_operations *fops);
 static int hardware_init(void);
 
-static void on(void); /* TX signal on */
-static void off(void); /* TX signal off */
-static void send_pulse(unsigned long length);
-static void send_space(unsigned long length);
+
 void Set_Pin(int pin);
 void Clr_Pin(int pin);
+
+
 unsigned int spiWrite(unsigned int spidata);
 
 // Hardware PIN used for pulse generation
-static int tx_pin = 17;
+
 
 
 #define RBUF_LEN 4096
 #define WBUF_LEN 4096
 
-#if HARDWARE == SERIAL
-
-
-static struct gpio Spi_gpios[] = {
-		
-		{ 17, GPIOF_OUT_INIT_HIGH, "LOAD" }, 	/* default to ON */		
-		{ 22, GPIOF_OUT_INIT_LOW,  "SCK" }, 	/* default to OFF */		
-		{ 23, GPIOF_OUT_INIT_LOW,  "DATA_IN" }, /* default to OFF */
-		
-	};
-
-#define PIN_LOAD 17
-#define	PIN_SCK  22
-#define	PIN_DATA_IN 23
-
-
-
-#elif HARDWARE == PARA
 
 static struct gpio leds_gpios[] = {
 		{ 4,  GPIOF_OUT_INIT_LOW,  "D0" }, /* default to OFF */
@@ -167,51 +139,10 @@ static struct gpio leds_gpios[] = {
 
 	};
 
-#endif
+
 
 
 static char wbuf[WBUF_LEN];
-
-// Pulse HI / LO
-
-static void on(void)
-{
-	gpio_set_value(tx_pin, 1);
-}
-
-static void off(void)
-{
-	gpio_set_value(tx_pin, 0); 
-}
-
-#ifndef MAX_UDELAY_MS
-#define MAX_UDELAY_US 5000
-#else
-#define MAX_UDELAY_US (MAX_UDELAY_MS*1000)
-#endif
-
-static void safe_udelay(unsigned long usecs)
-{
-	while (usecs > MAX_UDELAY_US) {
-		udelay(MAX_UDELAY_US);
-		usecs -= MAX_UDELAY_US;
-	}
-	udelay(usecs);
-}
-
-static void send_pulse(unsigned long length)
-{   
-	on();
-	/* dprintk("send_pulse_gpio %ld us\n", length); */ 
-	safe_udelay(length);
-}
-
-static void send_space(unsigned long length)
-{
-	off();
-	/* dprintk("send_space_gpio %ld us\n", length); */
-	safe_udelay(length);
-}
 
 
 void Set_Pin(int pin)
@@ -277,139 +208,17 @@ static ssize_t rfbb_write(struct file *file, const char *buf,
 	result = copy_from_user(wbuf, buf, n);	
 	if (result)
 	{
-		dprintk("Copy_from_user returns %d\n", result);    
+		dprintk("Error: Copy_from_user returns %d\n", result);    
 		return -EFAULT;
 	}
 
 	for (i = 0; i < n; i++)					// Show what we recieved from User Space 
 	printk("%d-Recibi (%X) \n",i, wbuf[i]);
 	
-	for (i = 0; i < n; i++)					// Find the first non ASCII number 
-	{
-		if (wbuf[i] < '0' || wbuf[i] > '9')
-			wbuf[i]=0x00;  					//and replace it with EOT (0x00) 
-	}
 
-	    
-    result=kstrtoint(wbuf, 10, &spidata);		// Convert received string to int 
-	
-	if (result)								// check for conversion error
-	{
-		dprintk("kstrtoint error %d\n", result);    
-		return -EFAULT;
-	}
-
-	spiWrite(spidata);
 
 	return n;
 }
-
-
-#if HARDWARE == PARA
-
-unsigned int spiWrite(unsigned int spidata)
-{
-	int i;	
-		
-		dprintk("entering on spiwrite %d\n", spidata);  
-	// Check if spidata is inside of 8 bit unsigned range
-	
-	if(spidata >= 0 && spidata <= 255)   // write to leds only when in range 
-	{
-		// Set / Clr individual pins
-		for (i=0; i< sizeof(leds_gpios)/sizeof(leds_gpios[0]); i++)
-		{
-				
-				if(spidata&0x01)
-				{
-					Set_Pin(leds_gpios[i].gpio);
-					printk("-Spidata (%X) SET pin %d\n",spidata,leds_gpios[i].gpio);
-				
-				}
-				else
-				{
-				
-					Clr_Pin(leds_gpios[i].gpio);
-					printk("-Spidata (%X) CLR pin %d\n",spidata,leds_gpios[i].gpio);
-				}
-				
-			spidata>>=1;   // Next Bit 
-		}
-	}	
-	
-	return 0;
-}
-/*	
-		
-//			send_pulse(100);   // 100 us HI
-		
-//			send_space(100);   // 100 us LO
-
-//			send_pulse(10000);   // 10 ms HI
-		
-//			send_space(10000);   // 10 ms LO
-
-//			send_pulse(1000000);   // 1 seg HI
-		
-//			send_space(1000000);   // 1 seg LO
-
-
-*/
-
-#elif HARDWARE == SERIAL
-
-unsigned int spiWrite(unsigned int spidata)
-{
-	unsigned int i;	
-	
-	dprintk("entering on spiwrite %d\n", spidata);
-	
-	Clr_Pin(PIN_SCK);                                     // Load and CK low (steady state)
-	Clr_Pin(PIN_LOAD); 
-		
-		
-	// Check if spidata is inside of 8 bit unsigned range
-	
-	if(spidata >= 0 && spidata <= 255)   // write to leds only when in range 
-	{
-		// Set / Clr individual pins
-		for (i=0; i<8; i++)
-		{
-				
-				if(spidata & 0x80)
-				{
-					Set_Pin(PIN_DATA_IN);	
-					printk("-Spidata (%X) SET pin \n",spidata);
-				
-				}
-				else
-				{
-				
-					Clr_Pin(PIN_DATA_IN);	
-					printk("-Spidata (%X) CLR pin \n",spidata);
-				}
-				
-				Clr_Pin(PIN_SCK); 									// Shift out each bit
-				Set_Pin(PIN_SCK);
-								
-				
-			spidata<<=1;   // Next Bit 
-		}
-		
-		
-		Set_Pin(PIN_LOAD);
-		
-	}	
-	
-	return 0;
-}
-
-
-#endif
-
-
-
-
 
 // ************************IOCTL**************************************
 
@@ -421,25 +230,20 @@ static long rfbb_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 {
 query_arg_t q;	// q structure is used to transfer data from / to User Land
 
-	dprintk("IOCTL function \n");
+	dprintk("IOCLT function \n");
 
  
     switch (cmd)
     {
-		
-		
-		
         case QUERY_GET_VARIABLES:
-            q.param1 = param1;
+            q.param1 = param1 ;
             q.param2 = 20;
             q.param3 = 30;
-			
-            
+
             if (copy_to_user((query_arg_t *)arg, &q, sizeof(query_arg_t)))
             {
                 return -EACCES;
             }
-          
             break;
         case QUERY_CLR_VARIABLES:
             
@@ -482,10 +286,6 @@ static int rfbb_open(struct inode *ino, struct file *filep)
 
 static int rfbb_release(struct inode *node, struct file *file) // close file ojo
 {	
-	/// off();
-
-
-	/* lirc_buffer_free(&rbuf); */ 
   
 	device_open--;          /* We're now ready for our next caller */ 
 	module_put(THIS_MODULE);
@@ -592,31 +392,17 @@ static void rfbb_exit_module(void)
 	cdev_del(rfbbDevs);
 	unregister_chrdev_region(MKDEV(rfbb_major, 0), 1);
 	
-#if HARDWARE == SERIAL
 
-		gpio_unexport(PIN_LOAD);
-		gpio_unexport(PIN_SCK);
-		gpio_unexport(PIN_DATA_IN);
-		
-		/* Free Requested Pins  (don't forget this othewise you MUST reboot the board)*/
-		
-		//gpio_free(tx_pin);   // one pin
-		
-		gpio_free_array(Spi_gpios, ARRAY_SIZE(Spi_gpios));  // many pins at once
-		
-
-#elif HARDWARE == PARA
-
-		gpio_unexport(tx_pin);
-		gpio_unexport(4);
+	
+	gpio_unexport(4);
 		
 		/* Free Requested Pins  (don't forget this othewise you MUST reboot the board)*/
 		
 		//gpio_free(tx_pin);
 		
-		gpio_free_array(leds_gpios, ARRAY_SIZE(leds_gpios));  // many pins at once
+	gpio_free_array(leds_gpios, ARRAY_SIZE(leds_gpios));  // many pins at once
 	
-#endif
+
 	
 	dprintk("cleaned up module\n");
 }
@@ -635,61 +421,29 @@ static int init_port(void)
 
 
 
-
-
 static int hardware_init(void)
 {
 	
 	int err = 0;
 
 
-	printk(RFBB_DRIVER_NAME   " Empezando.....ya 2016 SPI / PP \n");
-
-
-#if HARDWARE == SERIAL
-
-	 printk(RFBB_DRIVER_NAME   " Empezando.....ya 2016  Serial Mode \n");
-		
-		
-	//err = gpio_request_one(tx_pin, GPIOF_OUT_INIT_LOW, "RFBB_TX");  // request one pin
-	err = gpio_request_array(Spi_gpios, ARRAY_SIZE(Spi_gpios));       // request many pin at once
-
-	if (err) 
-	{
-		printk(KERN_ERR  RFBB_DRIVER_NAME
-		         "Could not request RFBB TX pin, error: %d\n", err);
-		return -EIO;
-	}
-                      
-
-	/* Export pins and make them able to change from sysfs for troubleshooting */
-
-	gpio_export(PIN_LOAD, 0);
-	gpio_export(PIN_SCK, 0);
-	gpio_export(PIN_DATA_IN, 0);
-		
-
-
-
-#elif HARDWARE == PARA
-
 		printk(RFBB_DRIVER_NAME   " Empezando.....ya 2016  Parallel Mode \n");
 
 		//err = gpio_request_one(tx_pin, GPIOF_OUT_INIT_LOW, "RFBB_TX");  // request one pin
 		err = gpio_request_array(leds_gpios, ARRAY_SIZE(leds_gpios));     // request many pin at once
+
+
+
 		if (err) {
 						printk(KERN_ERR  RFBB_DRIVER_NAME
-				       "Could not request RFBB TX pin, error: %d\n", err);
+				       "Could not request pin, error: %d\n", err);
 						return -EIO;
 				 }
                         
 
-		/* Export pins and make them able to change from sysfs for troubleshooting */
-		gpio_export(tx_pin, 0);
+		/* Export pins and make them able to change from sysfs for troubleshooting (optional)*/
+		
 		gpio_export(4, 0);
-		
-		
-#endif
 		
 	return 0;
 }
