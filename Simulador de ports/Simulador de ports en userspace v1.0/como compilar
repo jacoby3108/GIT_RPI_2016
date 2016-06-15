@@ -1,0 +1,30 @@
+//ON PI gcc simulacion.c portsimulator.c libterm.c flibspi.c -o simulacion        Hi level fops (fopen)
+//ON PI gcc simulacion.c portsimulator.c libterm.c libspi.c -o simulacion         Low level fops (open)
+//ON PC gcc simulacion.c portsimulator.c libterm.o -o simulacion
+
+
+
+//// NOTES /////
+
+
+//http://stackoverflow.com/questions/7469139/what-is-equivalent-to-getch-getche-in-linux
+//http://cboard.cprogramming.com/c-programming/63166-kbhit-linux.html
+
+
+/*if you want To create a static library
+
+gcc -c  libterm.c -o libterm.o								compile static lib
+ar  -cqv libterm.a libterm.o								Create static lib
+gcc simulacion.c portsimulator.c libterm.a -o simulacion    Compile app using created library
+
+** if you want to create a standad compile 
+*   
+gcc simulacion.c portsimulator.c libterm.c -o simulacion
+
+http://www.yolinux.com/TUTORIALS/LibraryArchives-StaticAndDynamic.html
+* http://www.cprogramming.com/tutorial/shared-libraries-linux-gcc.html
+* http://www.adp-gmbh.ch/cpp/gcc/create_lib.html
+* 
+*/
+
+

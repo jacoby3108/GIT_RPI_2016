@@ -1,0 +1,3 @@
+//ON PI gcc simulacion.c portsimulator.c libterm.c flibspi.c -o simulacion Hi level fops (fopen)
+//ON PI gcc simulacion.c portsimulator.c libterm.c libspi.c -o simulacion  Low level fops (open)
+//ON PC gcc simulacion.c portsimulator.c libterm.o -o simulacion
